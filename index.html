@@ -453,6 +453,36 @@
       return fieldVar ? fieldVar.getText() : '';
     }
 
+    // ── 함수(procedures)명 안전화 ──────────────────────────
+    // 변수와 같은 이유로, 함수 정의 블록의 이름(한글 등)을 안전한 영문 식별자로 매핑한다.
+    // 정의(procedures_defnoreturn/defreturn)와 호출(procedures_callnoreturn/callreturn) 블록은
+    // Blockly 내부에서 같은 이름 문자열을 공유하므로, 이름 문자열 자체를 키로 매핑한다.
+    let currentFuncNameMap = {};
+
+    function buildFuncNameMap(workspace) {
+      currentFuncNameMap = {};
+      const usedSafeNames = new Set();
+      let idx = 0;
+      workspace.getAllBlocks(false).forEach(b => {
+        if (b.type === 'procedures_defnoreturn' || b.type === 'procedures_defreturn') {
+          const rawName = b.getFieldValue('NAME');
+          if (currentFuncNameMap[rawName] !== undefined) return;
+          idx++;
+          let safe = rawName.replace(/[^A-Za-z0-9_]/g, '');
+          if (!safe || /^[0-9]/.test(safe)) safe = 'krFunc' + idx;
+          let finalSafe = safe;
+          let suffix = 1;
+          while (usedSafeNames.has(finalSafe)) { suffix++; finalSafe = safe + '_' + suffix; }
+          usedSafeNames.add(finalSafe);
+          currentFuncNameMap[rawName] = finalSafe;
+        }
+      });
+    }
+
+    function safeFuncName(rawName) {
+      return currentFuncNameMap[rawName] !== undefined ? currentFuncNameMap[rawName] : rawName;
+    }
+
     // ── 변수 타입 추론 ──────────────────────────────────
     // Blockly의 기본 '변수' 카테고리는 타입 정보를 따로 안 받기 때문에,
     // 해당 변수에 대입(variables_set)되는 값의 종류를 보고 int/float/String 중 무엇으로
@@ -503,6 +533,7 @@
       let loopBodyText = "";
 
       buildVarNameMap(workspace);
+      buildFuncNameMap(workspace);
       pinModeCalls = [];
       pinModeSeen = new Set();
 
@@ -525,9 +556,18 @@
           setupBodyText = getBlockCode(setupBlock, "  ");
           loopBodyText = getBlockCode(loopBlock, "  ");
         } else if (block.type === 'procedures_defnoreturn') {
-          const funcName = block.getFieldValue('NAME');
+          const rawName = block.getFieldValue('NAME');
+          const funcName = safeFuncName(rawName);
           const statements = block.getInputTargetBlock('STACK');
-          functionsCode += `void ${funcName}() {\n${getBlockCode(statements, "  ")}}\n\n`;
+          const comment = funcName !== rawName ? ` // 원래 이름: ${rawName}` : '';
+          functionsCode += `void ${funcName}() {${comment}\n${getBlockCode(statements, "  ")}}\n\n`;
+        } else if (block.type === 'procedures_defreturn') {
+          const rawName = block.getFieldValue('NAME');
+          const funcName = safeFuncName(rawName);
+          const statements = block.getInputTargetBlock('STACK');
+          const returnCode = getExpressionCode(block.getInputTargetBlock('RETURN')) || '0';
+          const comment = funcName !== rawName ? ` // 원래 이름: ${rawName}` : '';
+          functionsCode += `int ${funcName}() {${comment}\n${getBlockCode(statements, "  ")}  return ${returnCode};\n}\n\n`;
         }
       });
 
@@ -609,6 +649,9 @@
         } else if (currentBlock.type === 'serial_available_if') {
           const doCode = getBlockCode(currentBlock.getInputTargetBlock('DO'), indent + "  ");
           code += `${indent}if (Serial.available() > 0) {\n${doCode}${indent}}\n`;
+        } else if (currentBlock.type === 'procedures_callnoreturn') {
+          const funcName = safeFuncName(currentBlock.getFieldValue('NAME'));
+          code += `${indent}${funcName}();\n`;
         }
         currentBlock = currentBlock.getNextBlock();
       }
@@ -704,6 +747,9 @@
         const type = block.getFieldValue('TYPE');
         const base = `(Serial.print(${prompt}), Serial.readStringUntil('\\n'))`;
         return type === 'INT' ? `(${base}).toInt()` : base;
+      } else if (block.type === 'procedures_callreturn') {
+        const funcName = safeFuncName(block.getFieldValue('NAME'));
+        return `${funcName}()`;
       }
       return "";
     }
@@ -1207,18 +1253,34 @@
       await stkCommand(session, [STK.PROG_PAGE, (len >> 8) & 0xFF, len & 0xFF, 0x46, ...pageBytes, STK.CRC_EOP], 3000);
     }
 
+    async function resetIntoBootloader(serialPort) {
+      // 부트로더 진입을 위한 리셋. 실제 avrdude의 "arduino" 프로그래머 타입과 동일하게
+      // DTR과 RTS를 함께 0으로 내렸다가 함께 1로 올림 (DTR만 토글하면 보드/USB-시리얼 칩에
+      // 따라 리셋이 안 걸릴 수 있음 — 이게 "동기화 실패"의 원인이었음)
+      await serialPort.setSignals({ dataTerminalReady: false, requestToSend: false });
+      await sleep(250);
+      await serialPort.setSignals({ dataTerminalReady: true, requestToSend: true });
+      await sleep(50);
+    }
+
     async function flashViaWebSerial(serialPort, flashBytes, logFn) {
       await serialPort.open({ baudRate: 115200 });
 
-      // 부트로더 진입을 위한 리셋 (DTR 라인을 잠깐 내렸다 올림)
-      await serialPort.setSignals({ dataTerminalReady: false });
-      await sleep(250);
-      await serialPort.setSignals({ dataTerminalReady: true });
-      await sleep(50);
-
       const session = createStk500Session(serialPort);
       try {
-        await stkSync(session);
+        // 리셋 한 번으로 동기화가 안 될 수 있어(USB 드라이버/타이밍 이슈), 최대 2번까지 재시도
+        let synced = false;
+        for (let attempt = 1; attempt <= 2 && !synced; attempt++) {
+          await resetIntoBootloader(serialPort);
+          try {
+            await stkSync(session);
+            synced = true;
+          } catch (e) {
+            if (attempt === 2) throw e;
+            logFn('동기화 재시도 중...');
+          }
+        }
+
         await stkCommand(session, [STK.ENTER_PROGMODE, STK.CRC_EOP]);
 
         const PAGE_SIZE = 128; // ATmega328P SPM 페이지 크기
