@@ -1211,13 +1211,18 @@
 
       async function writeBytes(bytes) { await writer.write(new Uint8Array(bytes)); }
 
+      // 타임아웃으로 포기했던 이전 응답이 뒤늦게 도착해 버퍼에 쌓여있으면,
+      // 다음 명령의 응답인 것처럼 잘못 읽혀서 엉뚱한 곳에서 에러가 난다.
+      // 매 명령 전에 이 찌꺼기를 비워서 항상 "신선한" 응답만 읽도록 한다.
+      function flush() { buffer = []; }
+
       async function close() {
         try { await reader.cancel(); } catch (e) {}
         try { reader.releaseLock(); } catch (e) {}
         try { writer.releaseLock(); } catch (e) {}
       }
 
-      return { readBytes, writeBytes, close };
+      return { readBytes, writeBytes, close, flush };
     }
 
     const STK = { GET_SYNC: 0x30, ENTER_PROGMODE: 0x50, LEAVE_PROGMODE: 0x51, LOAD_ADDRESS: 0x55, PROG_PAGE: 0x64, CRC_EOP: 0x20, INSYNC: 0x14, OK: 0x10 };
@@ -1225,10 +1230,14 @@
     async function stkSync(session) {
       for (let i = 0; i < 25; i++) {
         try {
-          // 이전 시도에서 남은 응답 찌꺼기가 있을 수 있으니 매번 새로 시도
+          // 이전 시도에서 타임아웃으로 버려진 응답이 늦게 도착해 쌓여있을 수 있으니 매번 비우고 시작
+          session.flush();
           await session.writeBytes([STK.GET_SYNC, STK.CRC_EOP]);
           const resp = await session.readBytes(2, 300);
-          if (resp[0] === STK.INSYNC && resp[1] === STK.OK) return;
+          if (resp[0] === STK.INSYNC && resp[1] === STK.OK) {
+            session.flush(); // 다음 명령(프로그램 모드 진입)이 찌꺼기를 안 읽게 한 번 더 비움
+            return;
+          }
         } catch (e) { /* 재시도 */ }
         await sleep(100);
       }
@@ -1236,6 +1245,7 @@
     }
 
     async function stkCommand(session, bytes, timeoutMs = 2000) {
+      session.flush();
       await session.writeBytes(bytes);
       const resp = await session.readBytes(2, timeoutMs);
       if (resp[0] !== STK.INSYNC || resp[1] !== STK.OK) {
@@ -1412,4 +1422,5 @@
   </script>
 </body>
 </html>
+
 
