@@ -1223,7 +1223,7 @@
     const STK = { GET_SYNC: 0x30, ENTER_PROGMODE: 0x50, LEAVE_PROGMODE: 0x51, LOAD_ADDRESS: 0x55, PROG_PAGE: 0x64, CRC_EOP: 0x20, INSYNC: 0x14, OK: 0x10 };
 
     async function stkSync(session) {
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 25; i++) {
         try {
           // 이전 시도에서 남은 응답 찌꺼기가 있을 수 있으니 매번 새로 시도
           await session.writeBytes([STK.GET_SYNC, STK.CRC_EOP]);
@@ -1257,27 +1257,31 @@
       // 부트로더 진입을 위한 리셋. 실제 avrdude의 "arduino" 프로그래머 타입과 동일하게
       // DTR과 RTS를 함께 0으로 내렸다가 함께 1로 올림 (DTR만 토글하면 보드/USB-시리얼 칩에
       // 따라 리셋이 안 걸릴 수 있음 — 이게 "동기화 실패"의 원인이었음)
-      await serialPort.setSignals({ dataTerminalReady: false, requestToSend: false });
-      await sleep(250);
       await serialPort.setSignals({ dataTerminalReady: true, requestToSend: true });
       await sleep(50);
+      await serialPort.setSignals({ dataTerminalReady: false, requestToSend: false });
+      await sleep(300);
+      await serialPort.setSignals({ dataTerminalReady: true, requestToSend: true });
+      await sleep(100);
     }
 
     async function flashViaWebSerial(serialPort, flashBytes, logFn) {
       await serialPort.open({ baudRate: 115200 });
+      await sleep(200); // 포트를 연 직후 드라이버가 안정화될 시간을 잠깐 줌
 
       const session = createStk500Session(serialPort);
       try {
-        // 리셋 한 번으로 동기화가 안 될 수 있어(USB 드라이버/타이밍 이슈), 최대 2번까지 재시도
+        // 리셋 한 번으로 동기화가 안 될 수 있어(USB 드라이버/타이밍 이슈), 최대 4번까지 재시도
         let synced = false;
-        for (let attempt = 1; attempt <= 2 && !synced; attempt++) {
+        for (let attempt = 1; attempt <= 4 && !synced; attempt++) {
           await resetIntoBootloader(serialPort);
           try {
             await stkSync(session);
             synced = true;
           } catch (e) {
-            if (attempt === 2) throw e;
-            logFn('동기화 재시도 중...');
+            if (attempt === 4) throw e;
+            logFn(`동기화 재시도 중... (${attempt}/4)`);
+            await sleep(300);
           }
         }
 
