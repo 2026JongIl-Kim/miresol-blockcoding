@@ -7,6 +7,13 @@
   <script src="https://unpkg.com/blockly@9.3.0/blockly_compressed.js"></script>
   <script src="https://unpkg.com/blockly@9.3.0/blocks_compressed.js"></script>
   <script src="https://unpkg.com/blockly@9.3.0/msg/ko.js"></script>
+  <!-- avrbro: Web Serial API로 STK500v1을 구사해 브라우저에서 직접 우노/나노에 굽는 검증된 라이브러리
+       (내부적으로 js-stk500v1 사용). jsdelivr의 +esm 변환으로 불러와서 정확한 dist 파일명 없이도 동작. -->
+  <script type="module">
+    window.__avrbroReady = import('https://cdn.jsdelivr.net/npm/avrbro/+esm')
+      .then(m => { window.__avrbro = m.default || m; })
+      .catch(e => { console.error('avrbro 로드 실패', e); });
+  </script>
 
   <style>
     * { box-sizing: border-box; }
@@ -1125,197 +1132,15 @@
       document.getElementById('serialOutput').textContent = '';
     }
 
-    // ── 컴파일(서버) + 업로드(브라우저 직접, STK500 프로토콜 자체 구현) ──
+    // ── 컴파일(서버) + 업로드(브라우저 직접, avrbro 라이브러리 사용) ──
     // 서버는 arduino-cli로 컴파일만 해서 .hex를 돌려주고,
-    // 실제 보드에 굽는 건 브라우저가 Web Serial API로 STK500v1(Optiboot) 프로토콜을
-    // 직접 구사해서 한다. (blockoli.world와 같은 방식 — 외부 라이브러리 없이 직접 구현)
-    // 아두이노 우노(ATmega328P, Optiboot 부트로더, 115200bps, 128바이트 페이지) 기준.
+    // 실제 보드에 굽는 건 브라우저가 avrbro(Web Serial + STK500v1, js-stk500v1 기반)로 처리한다.
+    // 직접 구현했던 STK500 코드는 타이밍 이슈가 계속 발생해서, 검증된 라이브러리로 교체함.
 
     // 나중에 컴파일 서버를 별도 도메인(클라우드)으로 옮기면 여기만 그 주소로 바꾸면 됨.
     const COMPILE_API_BASE = 'https://miresol-compile-server.onrender.com';
 
     function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-    // Intel HEX 텍스트 → 실제 플래시에 들어갈 바이트 배열로 변환
-    function parseIntelHex(hexText) {
-      const mem = new Map();
-      let extendedAddr = 0;
-      let maxAddr = -1;
-      const lines = hexText.split(/\r?\n/).filter(l => l.trim().startsWith(':'));
-      for (const line of lines) {
-        const b = [];
-        for (let i = 1; i + 1 < line.length; i += 2) b.push(parseInt(line.substr(i, 2), 16));
-        const byteCount = b[0];
-        const addr = (b[1] << 8) | b[2];
-        const recType = b[3];
-        const data = b.slice(4, 4 + byteCount);
-        if (recType === 0x00) {
-          const base = extendedAddr + addr;
-          for (let i = 0; i < data.length; i++) {
-            mem.set(base + i, data[i]);
-            if (base + i > maxAddr) maxAddr = base + i;
-          }
-        } else if (recType === 0x01) {
-          break; // EOF
-        } else if (recType === 0x04) {
-          extendedAddr = ((data[0] << 8) | data[1]) << 16;
-        }
-        // 02/03/05 레코드는 아두이노 우노 hex에는 보통 안 나오므로 무시
-      }
-      if (maxAddr < 0) throw new Error('hex 파일에서 데이터를 찾지 못했습니다.');
-      const flash = new Uint8Array(maxAddr + 1).fill(0xFF);
-      for (const [addr, val] of mem) flash[addr] = val;
-      return flash;
-    }
-
-    // 시리얼 포트에 바이트 스트림을 읽고 쓰는 세션 (STK500 통신용)
-    function createStk500Session(serialPort) {
-      const writer = serialPort.writable.getWriter();
-      const reader = serialPort.readable.getReader();
-      let buffer = [];
-      let waiting = null;
-
-      (async function pump() {
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            if (value) {
-              for (const byte of value) buffer.push(byte);
-              if (waiting && buffer.length >= waiting.count) {
-                const bytes = buffer.splice(0, waiting.count);
-                const w = waiting; waiting = null;
-                w.resolve(bytes);
-              }
-            }
-          }
-        } catch (e) {
-          if (waiting) { waiting.reject(e); waiting = null; }
-        }
-      })();
-
-      function readBytes(count, timeoutMs) {
-        return new Promise((resolve, reject) => {
-          if (buffer.length >= count) { resolve(buffer.splice(0, count)); return; }
-          const timer = setTimeout(() => {
-            waiting = null;
-            reject(new Error('부트로더 응답 시간 초과 (보드가 부트로더 모드로 안 들어갔을 수 있음)'));
-          }, timeoutMs);
-          waiting = {
-            resolve: (bytes) => { clearTimeout(timer); resolve(bytes); },
-            reject: (e) => { clearTimeout(timer); reject(e); },
-            count
-          };
-        });
-      }
-
-      async function writeBytes(bytes) { await writer.write(new Uint8Array(bytes)); }
-
-      // 타임아웃으로 포기했던 이전 응답이 뒤늦게 도착해 버퍼에 쌓여있으면,
-      // 다음 명령의 응답인 것처럼 잘못 읽혀서 엉뚱한 곳에서 에러가 난다.
-      // 매 명령 전에 이 찌꺼기를 비워서 항상 "신선한" 응답만 읽도록 한다.
-      function flush() { buffer = []; }
-
-      async function close() {
-        try { await reader.cancel(); } catch (e) {}
-        try { reader.releaseLock(); } catch (e) {}
-        try { writer.releaseLock(); } catch (e) {}
-      }
-
-      return { readBytes, writeBytes, close, flush };
-    }
-
-    const STK = { GET_SYNC: 0x30, ENTER_PROGMODE: 0x50, LEAVE_PROGMODE: 0x51, LOAD_ADDRESS: 0x55, PROG_PAGE: 0x64, CRC_EOP: 0x20, INSYNC: 0x14, OK: 0x10 };
-
-    async function stkSync(session) {
-      for (let i = 0; i < 25; i++) {
-        try {
-          // 이전 시도에서 타임아웃으로 버려진 응답이 늦게 도착해 쌓여있을 수 있으니 매번 비우고 시작
-          session.flush();
-          await session.writeBytes([STK.GET_SYNC, STK.CRC_EOP]);
-          const resp = await session.readBytes(2, 300);
-          if (resp[0] === STK.INSYNC && resp[1] === STK.OK) {
-            session.flush(); // 다음 명령(프로그램 모드 진입)이 찌꺼기를 안 읽게 한 번 더 비움
-            return;
-          }
-        } catch (e) { /* 재시도 */ }
-        await sleep(100);
-      }
-      throw new Error('부트로더와 동기화하지 못했습니다.');
-    }
-
-    async function stkCommand(session, bytes, timeoutMs = 2000) {
-      session.flush();
-      await session.writeBytes(bytes);
-      const resp = await session.readBytes(2, timeoutMs);
-      if (resp[0] !== STK.INSYNC || resp[1] !== STK.OK) {
-        throw new Error('부트로더 응답 오류 (명령: 0x' + bytes[0].toString(16) + ')');
-      }
-    }
-
-    async function stkLoadAddress(session, byteAddr) {
-      const wordAddr = byteAddr >> 1;
-      await stkCommand(session, [STK.LOAD_ADDRESS, wordAddr & 0xFF, (wordAddr >> 8) & 0xFF, STK.CRC_EOP]);
-    }
-
-    async function stkProgPage(session, pageBytes) {
-      const len = pageBytes.length;
-      await stkCommand(session, [STK.PROG_PAGE, (len >> 8) & 0xFF, len & 0xFF, 0x46, ...pageBytes, STK.CRC_EOP], 3000);
-    }
-
-    async function resetIntoBootloader(serialPort) {
-      // 부트로더 진입을 위한 리셋. 실제 avrdude의 "arduino" 프로그래머 타입과 동일하게
-      // DTR과 RTS를 함께 0으로 내렸다가 함께 1로 올림 (DTR만 토글하면 보드/USB-시리얼 칩에
-      // 따라 리셋이 안 걸릴 수 있음 — 이게 "동기화 실패"의 원인이었음)
-      await serialPort.setSignals({ dataTerminalReady: true, requestToSend: true });
-      await sleep(50);
-      await serialPort.setSignals({ dataTerminalReady: false, requestToSend: false });
-      await sleep(300);
-      await serialPort.setSignals({ dataTerminalReady: true, requestToSend: true });
-      await sleep(100);
-    }
-
-    async function flashViaWebSerial(serialPort, flashBytes, logFn) {
-      await serialPort.open({ baudRate: 115200 });
-      await sleep(200); // 포트를 연 직후 드라이버가 안정화될 시간을 잠깐 줌
-
-      const session = createStk500Session(serialPort);
-      try {
-        // 리셋 한 번으로 동기화가 안 될 수 있어(USB 드라이버/타이밍 이슈), 최대 4번까지 재시도
-        let synced = false;
-        for (let attempt = 1; attempt <= 4 && !synced; attempt++) {
-          await resetIntoBootloader(serialPort);
-          try {
-            await stkSync(session);
-            synced = true;
-          } catch (e) {
-            if (attempt === 4) throw e;
-            logFn(`동기화 재시도 중... (${attempt}/4)`);
-            await sleep(300);
-          }
-        }
-
-        await stkCommand(session, [STK.ENTER_PROGMODE, STK.CRC_EOP]);
-
-        const PAGE_SIZE = 128; // ATmega328P SPM 페이지 크기
-        const totalPages = Math.ceil(flashBytes.length / PAGE_SIZE);
-        let pageIndex = 0;
-        for (let addr = 0; addr < flashBytes.length; addr += PAGE_SIZE, pageIndex++) {
-          const chunk = flashBytes.slice(addr, addr + PAGE_SIZE);
-          const page = chunk.length === PAGE_SIZE ? chunk : Uint8Array.from([...chunk, ...new Array(PAGE_SIZE - chunk.length).fill(0xFF)]);
-          await stkLoadAddress(session, addr);
-          await stkProgPage(session, page);
-          if (pageIndex % 8 === 0 || pageIndex === totalPages - 1) {
-            logFn(`페이지 ${pageIndex + 1}/${totalPages} 쓰는 중...`);
-          }
-        }
-
-        await stkCommand(session, [STK.LEAVE_PROGMODE, STK.CRC_EOP]);
-      } finally {
-        await session.close();
-        try { await serialPort.close(); } catch (e) {}
-      }
-    }
 
     async function uploadCode() {
       const currentCode = document.getElementById('codeView').textContent;
@@ -1328,7 +1153,16 @@
         return;
       }
 
+      // avrbro 모듈이 아직 로딩 중일 수 있으니 기다림 (보통은 이미 끝나있음)
+      if (window.__avrbroReady) await window.__avrbroReady;
+      const avrbro = window.__avrbro;
+      if (!avrbro) {
+        appendSerialLog('\n[오류] avrbro 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침 해주세요.');
+        return;
+      }
+
       const fqbn = document.getElementById('boardSelect').value;
+      const boardName = fqbn === 'arduino:avr:nano' ? 'nano' : 'uno';
 
       // 시리얼 모니터가 포트를 점유 중이면 포트 선택 자체가 안 될 수 있으니 먼저 해제
       if (port) {
@@ -1337,11 +1171,15 @@
 
       // ★ 포트 선택 창은 클릭 직후, 다른 await(특히 fetch)보다 먼저 띄워야 함.
       // 그렇지 않으면 "사용자 제스처 처리 중이 아님" 오류가 남.
-      let uploadPort;
+      let serial;
       try {
-        uploadPort = await navigator.serial.requestPort();
+        serial = await avrbro.openSerial({ baudRate: 115200 });
       } catch (err) {
         appendSerialLog('\n[오류] 포트 선택을 취소했거나 실패했습니다: ' + err.message);
+        return;
+      }
+      if (!serial) {
+        appendSerialLog('\n[안내] 포트 선택이 취소되었습니다.');
         return;
       }
 
@@ -1366,18 +1204,21 @@
           throw new Error(msg);
         }
         const hexText = await response.text();
-        const flashBytes = parseIntelHex(hexText);
-        appendSerialLog(`\n[1/2] 컴파일 성공! (${flashBytes.length} 바이트)`);
+        const hexBuffer = avrbro.parseHex(hexText);
+        appendSerialLog(`\n[1/2] 컴파일 성공! (${hexText.length} 바이트)`);
 
         uploadBtn.textContent = '⏳ 보드에 굽는 중...';
-        appendSerialLog('\n[2/2] 보드에 직접 업로드합니다...');
+        appendSerialLog('\n[2/2] 보드를 리셋하고 업로드합니다...');
 
-        await flashViaWebSerial(uploadPort, flashBytes, (msg) => appendSerialLog('\n[업로드] ' + msg));
+        await avrbro.reset(serial);
+        const success = await avrbro.flash(serial, hexBuffer, { boardName, debug: true });
+        if (!success) throw new Error('업로드에 실패했습니다.');
 
         appendSerialLog('\n[업로드 성공] 🎉 보드에 프로그램 업로드 완료!\n');
       } catch (err) {
         appendSerialLog('\n[업로드 오류] ' + err.message + '\n');
       } finally {
+        try { await avrbro.closeSerial(serial); } catch (e) {}
         uploadBtn.disabled = false;
         uploadBtn.textContent = originalBtnText;
         progressEl.classList.remove('active');
