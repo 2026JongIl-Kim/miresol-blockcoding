@@ -15,6 +15,9 @@
       .catch(e => { console.error('avrbro 로드 실패', e); });
   </script>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+
   <style>
     * { box-sizing: border-box; }
     html, body {
@@ -48,9 +51,6 @@
       height: 54px;
       width: auto;
       max-width: 220px;
-      background-color: #ffffff;
-      padding: 3px 8px;
-      border-radius: 8px;
       object-fit: contain;
       display: block;
     }
@@ -66,11 +66,11 @@
       gap: 10px;
     }
     #boardSelect {
-      padding: 8px 10px;
+      padding: 8px 12px;
       font-size: 13px;
-      border-radius: 6px;
-      border: none;
-      background-color: #2c3e50;
+      border-radius: 8px;
+      border: 1px solid #3a4a5c;
+      background-color: #263544;
       color: white;
       cursor: pointer;
     }
@@ -137,7 +137,8 @@
       height: 100%;
       display: flex;
       flex-direction: column;
-      border-left: 2px solid #333;
+      border-left: 1px solid #333;
+      box-shadow: -2px 0 6px rgba(0,0,0,0.15);
       z-index: 10;
       min-height: 0;
     }
@@ -162,7 +163,7 @@
     }
     .panel-header {
       background-color: #252526;
-      padding: 8px 15px;
+      padding: 10px 17px;
       font-size: 13px;
       font-weight: bold;
       color: #007acc;
@@ -177,9 +178,9 @@
       padding: 12px;
       flex: 1;
       min-height: 0;
-      font-family: 'Consolas', monospace;
+      font-family: 'Fira Code', 'Consolas', monospace;
       font-size: 13px;
-      line-height: 1.4;
+      line-height: 1.5;
       white-space: pre-wrap;
       overflow-y: auto;
       color: #9cdcfe;
@@ -199,8 +200,9 @@
       min-height: 0;
       padding: 10px;
       margin: 0;
-      font-family: 'Consolas', monospace;
+      font-family: 'Fira Code', 'Consolas', monospace;
       font-size: 13px;
+      line-height: 1.5;
       overflow-y: auto;
       white-space: pre-wrap;
     }
@@ -258,6 +260,31 @@
       margin: 0 !important;
       box-sizing: border-box !important;
     }
+
+    /* 선택된 카테고리 강조 (Blockly 9의 실제 클래스명이 버전에 따라 다를 수 있어 폭넓게 지정) */
+    .blocklyTreeSelected,
+    .blocklyToolboxSelected,
+    .blocklyToolboxCategorySelected {
+      background-color: #ffffff !important;
+      border-radius: 8px !important;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06);
+    }
+
+    /* 캔버스 배경을 살짝 오프화이트로 (점선 격자와 어우러지도록) */
+    .blocklyMainBackground {
+      fill: #fafafa !important;
+    }
+
+    /* 줌/휴지통 아이콘을 우측 다크 패널과 톤을 맞춰 플랫하게 */
+    .blocklyZoom image,
+    .blocklyTrash image {
+      filter: grayscale(1) opacity(0.7);
+      transition: filter 0.15s ease;
+    }
+    .blocklyZoom image:hover,
+    .blocklyTrash image:hover {
+      filter: grayscale(1) opacity(1);
+    }
   </style>
 </head>
 <body>
@@ -308,11 +335,7 @@
 
   <!-- Blockly 툴박스 XML 정의 -->
   <xml id="toolbox" style="display: none">
-    <category name="기초" colour="#4A90E2">
-      <block type="arduino_setup_loop"></block>
-    </category>
-
-    <category name="입출력" colour="#9966FF">
+    <category name="🔌 입출력" colour="#9966FF">
       <block type="arduino_digital_write">
         <value name="PIN"><shadow type="arduino_pin_dropdown"></shadow></value>
         <value name="STATE"><shadow type="arduino_high_low_dropdown"><field name="STATE">HIGH</field></shadow></value>
@@ -337,16 +360,16 @@
       <block type="arduino_high_low_dropdown"><field name="STATE">LOW</field></block>
     </category>
 
-    <category name="시간" colour="#808080">
+    <category name="⏱️ 시간" colour="#808080">
       <block type="arduino_delay"></block>
     </category>
 
-    <category name="조건" colour="#4C97FF">
+    <category name="🔀 조건" colour="#4C97FF">
       <block type="controls_if"></block>
       <block type="controls_ifelse"></block>
     </category>
 
-    <category name="반복" colour="#4C97FF">
+    <category name="🔁 반복" colour="#4C97FF">
       <block type="controls_repeat_ext">
         <value name="TIMES">
           <shadow type="math_number"><field name="NUM">10</field></shadow>
@@ -354,7 +377,7 @@
       </block>
     </category>
 
-    <category name="판단" colour="#4C97FF">
+    <category name="⚖️ 판단" colour="#4C97FF">
       <block type="logic_compare"></block>
       <block type="logic_operation"></block>
       <block type="logic_boolean"><field name="BOOL">TRUE</field></block>
@@ -362,7 +385,7 @@
       <block type="logic_negate"></block>
     </category>
 
-    <category name="수학" colour="#00A859">
+    <category name="➗ 수학" colour="#00A859">
       <block type="math_number"><field name="NUM">0</field></block>
       <block type="math_arithmetic"></block>
       <block type="math_modulo">
@@ -393,7 +416,7 @@
       </block>
     </category>
 
-    <category name="통신" colour="#707070">
+    <category name="📡 통신" colour="#707070">
       <block type="serial_begin"></block>
       <block type="serial_print">
         <value name="CONTENT"><shadow type="text"><field name="TEXT">hello</field></shadow></value>
@@ -407,8 +430,8 @@
       <block type="serial_available_if"></block>
     </category>
 
-    <category name="변수" custom="VARIABLE" colour="#FF6600"></category>
-    <category name="함수" custom="PROCEDURE" colour="#FF1493"></category>
+    <category name="🧮 변수" custom="VARIABLE" colour="#FF6600"></category>
+    <category name="🧩 함수" custom="PROCEDURE" colour="#FF1493"></category>
   </xml>
 
   <script>
@@ -1006,7 +1029,21 @@
       toolbox: document.getElementById('toolbox'),
       media: 'https://unpkg.com/blockly@9.3.0/media/',
       scrollbars: true,
-      trashcan: true
+      trashcan: true,
+      grid: {
+        spacing: 24,
+        length: 1,
+        colour: '#d0d0d0',
+        snap: false
+      },
+      zoom: {
+        controls: true,
+        wheel: true,
+        startScale: 1.0,
+        maxScale: 2,
+        minScale: 0.5,
+        scaleSpeed: 1.1
+      }
     });
 
     const onresize = function() {
