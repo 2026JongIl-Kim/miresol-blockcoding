@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>미레솔 - 아두이노 블록코딩 플랫폼</title>
+  <title>미레솔 블록코딩 플랫폼</title>
   <!-- Google Blockly 9.3.0 라이브러리 및 한국어 팩 -->
   <script src="https://unpkg.com/blockly@9.3.0/blockly_compressed.js"></script>
   <script src="https://unpkg.com/blockly@9.3.0/blocks_compressed.js"></script>
@@ -292,7 +292,7 @@
   <header>
     <div class="logo-container">
       <img src="log.png" alt="미레솔 로고" class="company-logo">
-      <h1>아두이노 / ESP32 CYD 블록코딩 플랫폼</h1>
+      <h1>미레솔 블록코딩 플랫폼</h1>
     </div>
     <div class="header-btns">
       <select id="boardSelect" title="업로드할 보드 선택">
@@ -335,7 +335,7 @@
 
   <!-- Blockly 툴박스 XML 정의 -->
   <xml id="toolbox" style="display: none">
-    <category name="🔌 입출력" colour="#9966FF">
+    <category name="🔌 입출력" colour="#9C27B0">
       <block type="arduino_digital_write">
         <value name="PIN"><shadow type="arduino_pin_dropdown"></shadow></value>
         <value name="STATE"><shadow type="arduino_high_low_dropdown"><field name="STATE">HIGH</field></shadow></value>
@@ -360,7 +360,7 @@
       <block type="arduino_high_low_dropdown"><field name="STATE">LOW</field></block>
     </category>
 
-    <category name="⏱️ 시간" colour="#808080">
+    <category name="⏱️ 시간" colour="#607D8B">
       <block type="time_wait_sec"></block>
       <block type="arduino_delay"></block>
       <block type="time_wait_us"></block>
@@ -369,7 +369,7 @@
       <block type="time_infinite_loop"></block>
     </category>
 
-    <category name="🔀 조건" colour="#4C97FF">
+    <category name="🔀 조건" colour="#2196F3">
       <block type="controls_if"></block>
       <block type="controls_ifelse"></block>
       <block type="logic_ternary">
@@ -377,7 +377,7 @@
       </block>
     </category>
 
-    <category name="🔁 반복" colour="#4C97FF">
+    <category name="🔁 반복" colour="#009688">
       <block type="controls_repeat_ext">
         <value name="TIMES">
           <shadow type="math_number"><field name="NUM">10</field></shadow>
@@ -401,7 +401,7 @@
       <block type="controls_flow_statements"></block>
     </category>
 
-    <category name="⚖️ 판단" colour="#4C97FF">
+    <category name="⚖️ 판단" colour="#3F51B5">
       <block type="logic_compare"></block>
       <block type="logic_operation"></block>
       <block type="logic_boolean"><field name="BOOL">TRUE</field></block>
@@ -409,7 +409,7 @@
       <block type="logic_negate"></block>
     </category>
 
-    <category name="➗ 수학" colour="#00A859">
+    <category name="➗ 수학" colour="#4CAF50">
       <block type="math_number"><field name="NUM">0</field></block>
       <block type="math_arithmetic"></block>
       <block type="math_modulo">
@@ -440,7 +440,7 @@
       </block>
     </category>
 
-    <category name="📡 통신" colour="#707070">
+    <category name="📡 통신" colour="#795548">
       <block type="serial_begin"></block>
       <block type="serial_print">
         <value name="CONTENT"><shadow type="text"><field name="TEXT">hello</field></shadow></value>
@@ -470,7 +470,7 @@
       </block>
     </category>
 
-    <category name="🧮 변수" custom="VARIABLE" colour="#FF6600"></category>
+    <category name="🧮 변수" custom="VARIABLE" colour="#FF6F00"></category>
 
     <category name="📦 배열" colour="#E91E63">
       <block type="array_declare"></block>
@@ -483,7 +483,7 @@
       </block>
       <block type="array_length"></block>
     </category>
-    <category name="🧩 함수" custom="PROCEDURE" colour="#FF1493"></category>
+    <category name="🧩 함수" custom="PROCEDURE" colour="#F9A825"></category>
   </xml>
 
   <script>
@@ -994,7 +994,7 @@
       init: function() {
         this.appendDummyInput().appendField(new Blockly.FieldDropdown(ARDUINO_PINS), "PIN");
         this.setOutput(true, null);
-        this.setColour(230);
+        this.setColour("#9C27B0");
       }
     };
 
@@ -1003,7 +1003,7 @@
         this.appendDummyInput()
             .appendField(new Blockly.FieldDropdown([["HIGH", "HIGH"], ["LOW", "LOW"]]), "STATE");
         this.setOutput(true, null);
-        this.setColour("#9966FF");
+        this.setColour("#9C27B0");
       }
     };
 
@@ -1025,7 +1025,7 @@
         this.appendDummyInput().appendField("출력하기");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#9966FF");
+        this.setColour("#9C27B0");
         this.setInputsInline(true);
       }
     };
@@ -1035,7 +1035,7 @@
         this.appendValueInput("PIN").appendField("핀");
         this.appendDummyInput().appendField("디지털 입력 값");
         this.setOutput(true, Boolean);
-        this.setColour("#9966FF");
+        this.setColour("#9C27B0");
         this.setInputsInline(true);
       }
     };
@@ -1045,7 +1045,7 @@
         this.appendValueInput("PIN").appendField("핀");
         this.appendDummyInput().appendField("디지털 입력 값 풀업");
         this.setOutput(true, Boolean);
-        this.setColour("#9966FF");
+        this.setColour("#9C27B0");
         this.setInputsInline(true);
       }
     };
@@ -1057,7 +1057,7 @@
         this.appendDummyInput().appendField("출력하기");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#9966FF");
+        this.setColour("#9C27B0");
         this.setInputsInline(true);
       }
     };
@@ -1069,7 +1069,7 @@
         this.appendDummyInput().appendField("출력하기");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#9966FF");
+        this.setColour("#9C27B0");
         this.setInputsInline(true);
       }
     };
@@ -1079,7 +1079,7 @@
         this.appendValueInput("PIN").appendField("핀");
         this.appendDummyInput().appendField("아날로그 입력 값");
         this.setOutput(true, Number);
-        this.setColour("#9966FF");
+        this.setColour("#9C27B0");
         this.setInputsInline(true);
       }
     };
@@ -1089,7 +1089,7 @@
         this.appendDummyInput().appendField(new Blockly.FieldNumber(1000), "DELAY_TIME").appendField("밀리초(ms) 동안 대기");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour(60);
+        this.setColour("#607D8B");
       }
     };
 
@@ -1099,7 +1099,7 @@
         this.appendValueInput("DIVISOR").appendField("을(를)");
         this.appendDummyInput().appendField("(으)로 나눈 나머지");
         this.setOutput(true, Number);
-        this.setColour("#00A859");
+        this.setColour("#4CAF50");
         this.setInputsInline(true);
       }
     };
@@ -1109,7 +1109,7 @@
         this.appendValueInput("NUM");
         this.appendDummyInput().appendField("의 소수점").appendField(new Blockly.FieldDropdown([["반올림", "ROUND"], ["버림", "FLOOR"], ["올림", "CEIL"]]), "MODE");
         this.setOutput(true, Number);
-        this.setColour("#00A859");
+        this.setColour("#4CAF50");
         this.setInputsInline(true);
       }
     };
@@ -1123,7 +1123,7 @@
         this.appendValueInput("TO_HIGH").appendField("~");
         this.appendDummyInput().appendField("(으)로 변환한 값");
         this.setOutput(true, Number);
-        this.setColour("#00A859");
+        this.setColour("#4CAF50");
         this.setInputsInline(true);
       }
     };
@@ -1135,7 +1135,7 @@
         this.appendValueInput("HIGH").appendField("~");
         this.appendDummyInput().appendField("사이에 맞춘 값");
         this.setOutput(true, Number);
-        this.setColour("#00A859");
+        this.setColour("#4CAF50");
         this.setInputsInline(true);
       }
     };
@@ -1146,7 +1146,7 @@
         this.appendValueInput("TO").appendField("부터");
         this.appendDummyInput().appendField("사이의 난수");
         this.setOutput(true, Number);
-        this.setColour("#00A859");
+        this.setColour("#4CAF50");
         this.setInputsInline(true);
       }
     };
@@ -1156,7 +1156,7 @@
         this.appendDummyInput().appendField(new Blockly.FieldDropdown([["정수형", "INT"], ["실수형", "FLOAT"], ["문자열", "STRING"]]), "TYPE");
         this.appendValueInput("VALUE");
         this.setOutput(true, null);
-        this.setColour("#00A859");
+        this.setColour("#4CAF50");
         this.setInputsInline(true);
       }
     };
@@ -1166,7 +1166,7 @@
         this.appendDummyInput().appendField("시리얼 통신 준비 : 통신 속도").appendField(new Blockly.FieldDropdown([["9600", "9600"], ["115200", "115200"], ["57600", "57600"]]), "BAUD").appendField("bps");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#707070");
+        this.setColour("#795548");
       }
     };
 
@@ -1176,7 +1176,7 @@
         this.appendDummyInput().appendField("출력 : 새로운 줄 추가").appendField(new Blockly.FieldCheckbox("TRUE"), "NEWLINE");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#707070");
+        this.setColour("#795548");
         this.setInputsInline(true);
       }
     };
@@ -1185,7 +1185,7 @@
       init: function() {
         this.appendDummyInput().appendField("시리얼 통신 수신 값");
         this.setOutput(true, String);
-        this.setColour("#707070");
+        this.setColour("#795548");
       }
     };
 
@@ -1193,7 +1193,7 @@
       init: function() {
         this.appendDummyInput().appendField("시리얼 통신 수신 값 길이");
         this.setOutput(true, Number);
-        this.setColour("#707070");
+        this.setColour("#795548");
       }
     };
 
@@ -1202,7 +1202,7 @@
         this.appendDummyInput().appendField("시리얼 통신 수신 값 비우기");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#707070");
+        this.setColour("#795548");
       }
     };
 
@@ -1211,7 +1211,7 @@
         this.appendValueInput("PROMPT");
         this.appendDummyInput().appendField("출력 후 입력받은").appendField(new Blockly.FieldDropdown([["문자열", "STRING"], ["정수형", "INT"]]), "TYPE").appendField("값");
         this.setOutput(true, String);
-        this.setColour("#707070");
+        this.setColour("#795548");
         this.setInputsInline(true);
       }
     };
@@ -1222,7 +1222,7 @@
         this.appendStatementInput("DO").appendField("실행");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#707070");
+        this.setColour("#795548");
       }
     };
 
@@ -1234,7 +1234,7 @@
           .appendField("초 기다리기");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#808080");
+        this.setColour("#607D8B");
       }
     };
 
@@ -1245,7 +1245,7 @@
           .appendField("마이크로초 기다리기");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#808080");
+        this.setColour("#607D8B");
       }
     };
 
@@ -1253,7 +1253,7 @@
       init: function() {
         this.appendDummyInput().appendField("현재까지 경과시간 (ms)");
         this.setOutput(true, Number);
-        this.setColour("#808080");
+        this.setColour("#607D8B");
       }
     };
 
@@ -1261,7 +1261,7 @@
       init: function() {
         this.appendDummyInput().appendField("현재까지 경과시간 (μs)");
         this.setOutput(true, Number);
-        this.setColour("#808080");
+        this.setColour("#607D8B");
       }
     };
 
@@ -1270,7 +1270,7 @@
         this.appendDummyInput().appendField("무한 반복 (프로그램 종료)");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#808080");
+        this.setColour("#607D8B");
       }
     };
 
@@ -1335,7 +1335,7 @@
           .appendField("이(가) 참인 동안");
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
-        this.setColour("#4C97FF");
+        this.setColour("#009688");
       }
     };
 
@@ -1422,6 +1422,27 @@
       }
     };
 
+    // ── Blockly 기본 제공 블록의 색을 카테고리 색과 강제로 맞춤 ──────
+    // controls_if, logic_compare 같은 Blockly 내장 블록은 자기 고유의 기본색을 쓰기 때문에,
+    // 카테고리의 colour 속성만으로는 블록 자체 색이 안 바뀐다. init을 감싸서 마지막에
+    // setColour를 한 번 더 호출하는 방식으로 카테고리 색과 100% 일치시킨다.
+    function forceBlockColour(blockType, hex) {
+      const def = Blockly.Blocks[blockType];
+      if (!def || typeof def.init !== 'function') return;
+      const originalInit = def.init;
+      def.init = function () {
+        originalInit.call(this);
+        this.setColour(hex);
+      };
+    }
+
+    ['controls_if', 'controls_ifelse', 'logic_ternary'].forEach(t => forceBlockColour(t, '#2196F3'));       // 조건
+    ['controls_repeat_ext', 'controls_whileUntil', 'controls_for', 'controls_flow_statements'].forEach(t => forceBlockColour(t, '#009688')); // 반복
+    ['logic_compare', 'logic_operation', 'logic_boolean', 'logic_negate'].forEach(t => forceBlockColour(t, '#3F51B5')); // 판단
+    ['math_number', 'math_arithmetic'].forEach(t => forceBlockColour(t, '#4CAF50'));                        // 수학
+    ['variables_get', 'variables_set', 'math_change'].forEach(t => forceBlockColour(t, '#FF6F00'));         // 변수
+    ['procedures_defnoreturn', 'procedures_defreturn', 'procedures_callnoreturn', 'procedures_callreturn', 'procedures_ifreturn'].forEach(t => forceBlockColour(t, '#F9A825')); // 함수
+
     // ── 워크스페이스 주입 (반응형 리사이즈를 위해 blocklyArea/blocklyDiv 구조 사용) ──
     const blocklyArea = document.getElementById('blocklyArea');
     const blocklyDiv = document.getElementById('blocklyDiv');
@@ -1468,25 +1489,6 @@
     const defaultXml = `
       <xml xmlns="https://developers.google.com/blockly/xml">
         <block type="arduino_setup_loop" x="30" y="30">
-          <statement name="SETUP">
-            <block type="serial_begin">
-              <field name="BAUD">9600</field>
-            </block>
-          </statement>
-          <statement name="LOOP">
-            <block type="serial_print">
-              <value name="CONTENT">
-                <shadow type="text">
-                  <field name="TEXT">미레솔 테스트 중...</field>
-                </shadow>
-              </value>
-              <next>
-                <block type="arduino_delay">
-                  <field name="DELAY_TIME">1000</field>
-                </block>
-              </next>
-            </block>
-          </statement>
         </block>
       </xml>
     `;
