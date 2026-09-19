@@ -361,12 +361,20 @@
     </category>
 
     <category name="⏱️ 시간" colour="#808080">
+      <block type="time_wait_sec"></block>
       <block type="arduino_delay"></block>
+      <block type="time_wait_us"></block>
+      <block type="time_millis"></block>
+      <block type="time_micros"></block>
+      <block type="time_infinite_loop"></block>
     </category>
 
     <category name="🔀 조건" colour="#4C97FF">
       <block type="controls_if"></block>
       <block type="controls_ifelse"></block>
+      <block type="logic_ternary">
+        <value name="IF"><shadow type="logic_boolean"><field name="BOOL">TRUE</field></shadow></value>
+      </block>
     </category>
 
     <category name="🔁 반복" colour="#4C97FF">
@@ -375,6 +383,22 @@
           <shadow type="math_number"><field name="NUM">10</field></shadow>
         </value>
       </block>
+      <block type="controls_whileUntil">
+        <value name="BOOL">
+          <shadow type="logic_boolean"><field name="BOOL">TRUE</field></shadow>
+        </value>
+      </block>
+      <block type="controls_do_while_custom">
+        <value name="BOOL">
+          <shadow type="logic_boolean"><field name="BOOL">TRUE</field></shadow>
+        </value>
+      </block>
+      <block type="controls_for">
+        <value name="FROM"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="TO"><shadow type="math_number"><field name="NUM">9</field></shadow></value>
+        <value name="BY"><shadow type="math_number"><field name="NUM">1</field></shadow></value>
+      </block>
+      <block type="controls_flow_statements"></block>
     </category>
 
     <category name="⚖️ 판단" colour="#4C97FF">
@@ -430,7 +454,35 @@
       <block type="serial_available_if"></block>
     </category>
 
+    <category name="📶 블루투스" colour="#0D47A1">
+      <block type="bluetooth_begin">
+        <field name="BAUD">9600</field>
+      </block>
+      <block type="bluetooth_print">
+        <value name="CONTENT"><shadow type="text"><field name="TEXT">hello</field></shadow></value>
+      </block>
+      <block type="bluetooth_read_val"></block>
+      <block type="bluetooth_read_length"></block>
+      <block type="bluetooth_flush"></block>
+      <block type="bluetooth_available_if"></block>
+      <block type="bluetooth_serial_bridge">
+        <field name="BAUD">9600</field>
+      </block>
+    </category>
+
     <category name="🧮 변수" custom="VARIABLE" colour="#FF6600"></category>
+
+    <category name="📦 배열" colour="#E91E63">
+      <block type="array_declare"></block>
+      <block type="array_set">
+        <value name="INDEX"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+        <value name="VALUE"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+      </block>
+      <block type="array_get">
+        <value name="INDEX"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+      </block>
+      <block type="array_length"></block>
+    </category>
     <category name="🧩 함수" custom="PROCEDURE" colour="#FF1493"></category>
   </xml>
 
@@ -455,6 +507,15 @@
         pinModeSeen.add(key);
         pinModeCalls.push(`pinMode(${pin}, ${mode});`);
       }
+    }
+
+    // ── 블루투스(SoftwareSerial) 연결 설정 자동 등록 ──────────
+    // "블루투스 통신 준비"와 "블루투스 & 시리얼 연결하기" 블록이 둘 다 이걸 호출할 수 있는데,
+    // SoftwareSerial 선언과 begin() 호출은 딱 한 번만 있어야 하므로(중복 호출 방지),
+    // 핀 모드와 같은 방식으로 한 번만 등록해서 setup() 맨 앞에 자동으로 넣는다.
+    let bluetoothConfig = null;
+    function registerBluetoothConfig(rx, tx, baud) {
+      if (!bluetoothConfig) bluetoothConfig = { rx, tx, baud };
     }
 
     // ── 변수명 안전화 ────────────────────────────────────
@@ -513,6 +574,44 @@
       return currentFuncNameMap[rawName] !== undefined ? currentFuncNameMap[rawName] : rawName;
     }
 
+    // ── 배열명 안전화 + 전역 선언 수집 ──────────────────────
+    // 배열 이름도 함수명과 같은 이유(한글 등 비-ASCII)로 안전한 영문 식별자로 매핑한다.
+    // 실제 C++ 배열 선언(예: int krArr1[5];)은 어디서 "배열 만들기" 블록을 만나든
+    // 한 번만 모아서 전역 변수 영역에 넣는다.
+    let currentArrayNameMap = {};
+    let arrayDeclarations = [];
+    let arraySeenNames = new Set();
+
+    function buildArrayNameMap(workspace) {
+      currentArrayNameMap = {};
+      const usedSafeNames = new Set();
+      let idx = 0;
+      workspace.getAllBlocks(false).forEach(b => {
+        if (b.type === 'array_declare') {
+          const rawName = b.getFieldValue('NAME');
+          if (currentArrayNameMap[rawName] !== undefined) return;
+          idx++;
+          let safe = rawName.replace(/[^A-Za-z0-9_]/g, '');
+          if (!safe || /^[0-9]/.test(safe)) safe = 'krArr' + idx;
+          let finalSafe = safe;
+          let suffix = 1;
+          while (usedSafeNames.has(finalSafe)) { suffix++; finalSafe = safe + '_' + suffix; }
+          usedSafeNames.add(finalSafe);
+          currentArrayNameMap[rawName] = finalSafe;
+        }
+      });
+    }
+
+    function safeArrayName(rawName) {
+      return currentArrayNameMap[rawName] !== undefined ? currentArrayNameMap[rawName] : rawName;
+    }
+
+    function registerArrayDeclaration(safeName, rawName, cType, size) {
+      if (arraySeenNames.has(safeName)) return;
+      arraySeenNames.add(safeName);
+      arrayDeclarations.push({ safeName, rawName, cType, size });
+    }
+
     // ── 변수 타입 추론 ──────────────────────────────────
     // Blockly의 기본 '변수' 카테고리는 타입 정보를 따로 안 받기 때문에,
     // 해당 변수에 대입(variables_set)되는 값의 종류를 보고 int/float/String 중 무엇으로
@@ -564,8 +663,12 @@
 
       buildVarNameMap(workspace);
       buildFuncNameMap(workspace);
+      buildArrayNameMap(workspace);
       pinModeCalls = [];
       pinModeSeen = new Set();
+      bluetoothConfig = null;
+      arrayDeclarations = [];
+      arraySeenNames = new Set();
 
       const variables = workspace.getAllVariables();
       variables.forEach(v => {
@@ -601,19 +704,38 @@
         }
       });
 
-      // setup/loop/함수 전체를 다 훑고 난 뒤에야 필요한 핀 목록이 확정되므로,
-      // 여기서 한 번만 setup() 맨 앞에 삽입한다 (핀당 한 줄).
+      // setup/loop/함수 전체를 다 훑고 난 뒤에야 필요한 핀 목록/블루투스 설정이 확정되므로,
+      // 여기서 한 번만 setup() 맨 앞에 삽입한다 (핀당 한 줄 + 블루투스 begin 한 번).
       let pinSetupText = "";
       if (pinModeCalls.length) {
-        pinSetupText = "  // 핀 모드 설정 (한 번만 실행되도록 자동으로 모음)\n" +
-          pinModeCalls.map(l => "  " + l).join("\n") + "\n\n";
+        pinSetupText += "  // 핀 모드 설정 (한 번만 실행되도록 자동으로 모음)\n" +
+          pinModeCalls.map(l => "  " + l).join("\n") + "\n";
       }
+      if (bluetoothConfig) {
+        pinSetupText += `  bluetooth.begin(${bluetoothConfig.baud}); // 블루투스 통신 시작 (한 번만 실행되도록 자동으로 모음)\n`;
+      }
+      if (pinSetupText) pinSetupText += "\n";
 
       const setupLoopCode =
         "void setup() {\n" + pinSetupText + setupBodyText + "}\n\n" +
         "void loop() {\n" + (loopBodyText || "  // 반복 실행할 코드\n") + "}\n";
 
-      return "#include <Arduino.h>\n\n" + globalVars + functionsCode + setupLoopCode;
+      let includes = "#include <Arduino.h>\n";
+      let btDeclare = "";
+      if (bluetoothConfig) {
+        includes += "#include <SoftwareSerial.h>\n";
+        btDeclare = `SoftwareSerial bluetooth(${bluetoothConfig.rx}, ${bluetoothConfig.tx});\n\n`;
+      }
+      includes += "\n";
+
+      let arrayVarsText = "";
+      arrayDeclarations.forEach(a => {
+        const comment = a.safeName !== a.rawName ? `  // 원래 이름: ${a.rawName}` : '';
+        arrayVarsText += `${a.cType} ${a.safeName}[${a.size}];${comment}\n`;
+      });
+      if (arrayVarsText) arrayVarsText += "\n";
+
+      return includes + btDeclare + globalVars + arrayVarsText + functionsCode + setupLoopCode;
     }
 
     function getBlockCode(block, indent) {
@@ -659,6 +781,26 @@
           const times = getExpressionCode(currentBlock.getInputTargetBlock('TIMES')) || '10';
           const doCode = getBlockCode(currentBlock.getInputTargetBlock('DO'), indent + "  ");
           code += `${indent}for (int i = 0; i < ${times}; i++) {\n${doCode}${indent}}\n`;
+        } else if (currentBlock.type === 'controls_whileUntil') {
+          const mode = currentBlock.getFieldValue('MODE');
+          const cond = getExpressionCode(currentBlock.getInputTargetBlock('BOOL')) || 'false';
+          const doCode = getBlockCode(currentBlock.getInputTargetBlock('DO'), indent + "  ");
+          const finalCond = mode === 'UNTIL' ? `!(${cond})` : cond;
+          code += `${indent}while (${finalCond}) {\n${doCode}${indent}}\n`;
+        } else if (currentBlock.type === 'controls_do_while_custom') {
+          const cond = getExpressionCode(currentBlock.getInputTargetBlock('BOOL')) || 'false';
+          const doCode = getBlockCode(currentBlock.getInputTargetBlock('DO'), indent + "  ");
+          code += `${indent}do {\n${doCode}${indent}} while (${cond});\n`;
+        } else if (currentBlock.type === 'controls_for') {
+          const varName = safeVarName(currentBlock.getField('VAR'));
+          const from = getExpressionCode(currentBlock.getInputTargetBlock('FROM')) || '0';
+          const to = getExpressionCode(currentBlock.getInputTargetBlock('TO')) || '10';
+          const by = getExpressionCode(currentBlock.getInputTargetBlock('BY')) || '1';
+          const doCode = getBlockCode(currentBlock.getInputTargetBlock('DO'), indent + "  ");
+          code += `${indent}for (${varName} = ${from}; ${varName} <= ${to}; ${varName} += ${by}) {\n${doCode}${indent}}\n`;
+        } else if (currentBlock.type === 'controls_flow_statements') {
+          const flow = currentBlock.getFieldValue('FLOW');
+          code += `${indent}${flow === 'BREAK' ? 'break' : 'continue'};\n`;
         } else if (currentBlock.type === 'variables_set') {
           const varName = safeVarName(currentBlock.getField('VAR'));
           const val = getExpressionCode(currentBlock.getInputTargetBlock('VALUE')) || '0';
@@ -682,6 +824,49 @@
         } else if (currentBlock.type === 'procedures_callnoreturn') {
           const funcName = safeFuncName(currentBlock.getFieldValue('NAME'));
           code += `${indent}${funcName}();\n`;
+        } else if (currentBlock.type === 'bluetooth_begin') {
+          const rx = currentBlock.getFieldValue('RXPIN');
+          const tx = currentBlock.getFieldValue('TXPIN');
+          const baud = currentBlock.getFieldValue('BAUD');
+          registerBluetoothConfig(rx, tx, baud);
+          code += `${indent}// 블루투스 통신 준비됨 (RxD:${rx}, TxD:${tx}, ${baud}bps)\n`;
+        } else if (currentBlock.type === 'bluetooth_print') {
+          const content = getExpressionCode(currentBlock.getInputTargetBlock('CONTENT')) || '""';
+          const newline = currentBlock.getFieldValue('NEWLINE') === 'TRUE';
+          code += `${indent}bluetooth.${newline ? 'println' : 'print'}(${content});\n`;
+        } else if (currentBlock.type === 'bluetooth_flush') {
+          code += `${indent}while (bluetooth.available() > 0) { bluetooth.read(); }\n`;
+        } else if (currentBlock.type === 'bluetooth_available_if') {
+          const doCode = getBlockCode(currentBlock.getInputTargetBlock('DO'), indent + "  ");
+          code += `${indent}if (bluetooth.available() > 0) {\n${doCode}${indent}}\n`;
+        } else if (currentBlock.type === 'bluetooth_serial_bridge') {
+          const rx = currentBlock.getFieldValue('RXPIN');
+          const tx = currentBlock.getFieldValue('TXPIN');
+          const baud = currentBlock.getFieldValue('BAUD');
+          registerBluetoothConfig(rx, tx, baud);
+          code += `${indent}if (Serial.available()) bluetooth.write(Serial.read());\n`;
+          code += `${indent}if (bluetooth.available()) Serial.write(bluetooth.read());\n`;
+        } else if (currentBlock.type === 'array_declare') {
+          const rawName = currentBlock.getFieldValue('NAME');
+          const safeName = safeArrayName(rawName);
+          const type = currentBlock.getFieldValue('TYPE');
+          const size = currentBlock.getFieldValue('SIZE');
+          const cType = type === 'FLOAT' ? 'float' : (type === 'STRING' ? 'String' : 'int');
+          registerArrayDeclaration(safeName, rawName, cType, size);
+          code += `${indent}// 배열 준비됨: ${rawName}[${size}] (${cType})\n`;
+        } else if (currentBlock.type === 'array_set') {
+          const name = safeArrayName(currentBlock.getFieldValue('NAME'));
+          const index = getExpressionCode(currentBlock.getInputTargetBlock('INDEX')) || '0';
+          const value = getExpressionCode(currentBlock.getInputTargetBlock('VALUE')) || '0';
+          code += `${indent}${name}[${index}] = ${value};\n`;
+        } else if (currentBlock.type === 'time_wait_sec') {
+          const sec = parseFloat(currentBlock.getFieldValue('SEC')) || 0;
+          code += `${indent}delay(${Math.round(sec * 1000)});\n`;
+        } else if (currentBlock.type === 'time_wait_us') {
+          const us = currentBlock.getFieldValue('US');
+          code += `${indent}delayMicroseconds(${us});\n`;
+        } else if (currentBlock.type === 'time_infinite_loop') {
+          code += `${indent}while (true) {}\n`;
         }
         currentBlock = currentBlock.getNextBlock();
       }
@@ -780,6 +965,26 @@
       } else if (block.type === 'procedures_callreturn') {
         const funcName = safeFuncName(block.getFieldValue('NAME'));
         return `${funcName}()`;
+      } else if (block.type === 'bluetooth_read_val') {
+        return `bluetooth.readString()`;
+      } else if (block.type === 'bluetooth_read_length') {
+        return `bluetooth.available()`;
+      } else if (block.type === 'array_get') {
+        const name = safeArrayName(block.getFieldValue('NAME'));
+        const index = getExpressionCode(block.getInputTargetBlock('INDEX')) || '0';
+        return `${name}[${index}]`;
+      } else if (block.type === 'array_length') {
+        const name = safeArrayName(block.getFieldValue('NAME'));
+        return `(sizeof(${name}) / sizeof(${name}[0]))`;
+      } else if (block.type === 'logic_ternary') {
+        const cond = getExpressionCode(block.getInputTargetBlock('IF')) || 'false';
+        const thenVal = getExpressionCode(block.getInputTargetBlock('THEN')) || '0';
+        const elseVal = getExpressionCode(block.getInputTargetBlock('ELSE')) || '0';
+        return `(${cond} ? ${thenVal} : ${elseVal})`;
+      } else if (block.type === 'time_millis') {
+        return `millis()`;
+      } else if (block.type === 'time_micros') {
+        return `micros()`;
       }
       return "";
     }
@@ -1018,6 +1223,202 @@
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour("#707070");
+      }
+    };
+
+    // ── 시간(추가): 초/마이크로초 대기, 경과시간, 무한반복(정지) ──
+    Blockly.Blocks['time_wait_sec'] = {
+      init: function() {
+        this.appendDummyInput()
+          .appendField(new Blockly.FieldNumber(1, 0, 3600, 0.1), "SEC")
+          .appendField("초 기다리기");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#808080");
+      }
+    };
+
+    Blockly.Blocks['time_wait_us'] = {
+      init: function() {
+        this.appendDummyInput()
+          .appendField(new Blockly.FieldNumber(100, 0, 1000000, 1), "US")
+          .appendField("마이크로초 기다리기");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#808080");
+      }
+    };
+
+    Blockly.Blocks['time_millis'] = {
+      init: function() {
+        this.appendDummyInput().appendField("현재까지 경과시간 (ms)");
+        this.setOutput(true, Number);
+        this.setColour("#808080");
+      }
+    };
+
+    Blockly.Blocks['time_micros'] = {
+      init: function() {
+        this.appendDummyInput().appendField("현재까지 경과시간 (μs)");
+        this.setOutput(true, Number);
+        this.setColour("#808080");
+      }
+    };
+
+    Blockly.Blocks['time_infinite_loop'] = {
+      init: function() {
+        this.appendDummyInput().appendField("무한 반복 (프로그램 종료)");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#808080");
+      }
+    };
+
+    // ── 배열(Array): 아두이노는 메모리가 매우 작아 크기 가변 리스트 대신 고정 크기 배열을 사용 ──
+    Blockly.Blocks['array_declare'] = {
+      init: function() {
+        this.appendDummyInput()
+          .appendField("배열 만들기 : 이름")
+          .appendField(new Blockly.FieldTextInput("배열1"), "NAME")
+          .appendField("타입")
+          .appendField(new Blockly.FieldDropdown([["정수형", "INT"], ["실수형", "FLOAT"], ["문자열", "STRING"]]), "TYPE")
+          .appendField("크기")
+          .appendField(new Blockly.FieldNumber(5, 1, 1000, 1), "SIZE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#E91E63");
+        this.setInputsInline(true);
+      }
+    };
+
+    Blockly.Blocks['array_set'] = {
+      init: function() {
+        this.appendDummyInput().appendField("배열").appendField(new Blockly.FieldTextInput("배열1"), "NAME");
+        this.appendValueInput("INDEX").appendField("의");
+        this.appendValueInput("VALUE").appendField("번째에");
+        this.appendDummyInput().appendField("저장하기");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#E91E63");
+        this.setInputsInline(true);
+      }
+    };
+
+    Blockly.Blocks['array_get'] = {
+      init: function() {
+        this.appendDummyInput().appendField("배열").appendField(new Blockly.FieldTextInput("배열1"), "NAME");
+        this.appendValueInput("INDEX").appendField("의");
+        this.appendDummyInput().appendField("번째 값");
+        this.setOutput(true, null);
+        this.setColour("#E91E63");
+        this.setInputsInline(true);
+      }
+    };
+
+    Blockly.Blocks['array_length'] = {
+      init: function() {
+        this.appendDummyInput()
+          .appendField("배열").appendField(new Blockly.FieldTextInput("배열1"), "NAME")
+          .appendField("의 길이");
+        this.setOutput(true, Number);
+        this.setColour("#E91E63");
+      }
+    };
+
+    // ── 실행 먼저 하고 조건은 나중에 확인하는 do-while (Blockly 기본 제공 블록에는 없어서 직접 정의) ──
+    Blockly.Blocks['controls_do_while_custom'] = {
+      init: function() {
+        this.appendDummyInput().appendField("실행");
+        this.appendStatementInput("DO");
+        this.appendValueInput("BOOL").setCheck("Boolean")
+          .appendField("반복")
+          .appendField("이(가) 참인 동안");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#4C97FF");
+      }
+    };
+
+    // ── 블루투스(SoftwareSerial 기반, HC-05/HC-06 등) ──────────
+    const BT_BAUD_OPTIONS = [["9600", "9600"], ["38400", "38400"], ["57600", "57600"], ["115200", "115200"]];
+
+    Blockly.Blocks['bluetooth_begin'] = {
+      init: function() {
+        this.appendDummyInput()
+          .appendField("블루투스 통신 준비 : RxD 핀")
+          .appendField(new Blockly.FieldDropdown(ARDUINO_PINS), "RXPIN")
+          .appendField("TxD 핀")
+          .appendField(new Blockly.FieldDropdown(ARDUINO_PINS), "TXPIN");
+        this.appendDummyInput()
+          .appendField("통신 속도")
+          .appendField(new Blockly.FieldDropdown(BT_BAUD_OPTIONS), "BAUD")
+          .appendField("bps");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#0D47A1");
+      }
+    };
+
+    Blockly.Blocks['bluetooth_print'] = {
+      init: function() {
+        this.appendValueInput("CONTENT").appendField("블루투스에");
+        this.appendDummyInput().appendField("전송 : 새로운 줄 추가").appendField(new Blockly.FieldCheckbox("TRUE"), "NEWLINE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#0D47A1");
+        this.setInputsInline(true);
+      }
+    };
+
+    Blockly.Blocks['bluetooth_read_val'] = {
+      init: function() {
+        this.appendDummyInput().appendField("블루투스 통신 수신 값");
+        this.setOutput(true, String);
+        this.setColour("#0D47A1");
+      }
+    };
+
+    Blockly.Blocks['bluetooth_read_length'] = {
+      init: function() {
+        this.appendDummyInput().appendField("블루투스 통신 수신 값 길이");
+        this.setOutput(true, Number);
+        this.setColour("#0D47A1");
+      }
+    };
+
+    Blockly.Blocks['bluetooth_flush'] = {
+      init: function() {
+        this.appendDummyInput().appendField("블루투스 통신 수신 값 비우기");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#0D47A1");
+      }
+    };
+
+    Blockly.Blocks['bluetooth_available_if'] = {
+      init: function() {
+        this.appendDummyInput().appendField("만약 블루투스 통신 수신 값이 있다면");
+        this.appendStatementInput("DO").appendField("실행");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#0D47A1");
+      }
+    };
+
+    Blockly.Blocks['bluetooth_serial_bridge'] = {
+      init: function() {
+        this.appendDummyInput()
+          .appendField("블루투스 & 시리얼 통신 연결하기 : RxD 핀")
+          .appendField(new Blockly.FieldDropdown(ARDUINO_PINS), "RXPIN")
+          .appendField("TxD 핀")
+          .appendField(new Blockly.FieldDropdown(ARDUINO_PINS), "TXPIN");
+        this.appendDummyInput()
+          .appendField("통신 속도")
+          .appendField(new Blockly.FieldDropdown(BT_BAUD_OPTIONS), "BAUD")
+          .appendField("bps");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour("#0D47A1");
       }
     };
 
@@ -1300,5 +1701,4 @@
   </script>
 </body>
 </html>
-
 
